@@ -468,7 +468,7 @@ def plot_active_learning_2d_snapshots(history, Xg, Yg, sigma_x=1.0, sigma_y=0.5)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# PART 3b — When does kernel learning fail?              (TODOs 12–13)
+# PART 4 — Kernel Sensitivity: When does ARD learning fail?   (TODOs 12–13)
 #
 # Lesson: marginal-likelihood optimisation of ARD length scales (empirical
 # Bayes / Type II ML, Murphy §15.3.2 / Bishop §6.4.3) requires enough data
@@ -611,7 +611,7 @@ def plot_kernel_sensitivity_2d(
     axes[0, 0].set_ylabel(f"Sparse  n_initial={n_initial_sparse}\nσ(x)", fontsize=9)
     axes[1, 0].set_ylabel(f"Dense   n_initial={n_initial_dense}\nσ(x)", fontsize=9)
     fig.suptitle(
-        "Part 3b – ARD kernel learning: sparse vs dense initial data\n"
+        "Part 4 – ARD kernel learning: sparse vs dense initial data\n"
         "Stripe artefacts (top row, early steps) arise because the\n"
         "marginal-likelihood optimiser cannot identify both length scales\n"
         "from only a few points.  More initial data (bottom row) fixes it.",
@@ -623,7 +623,7 @@ def plot_kernel_sensitivity_2d(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# PART 4 — Animation                                      (TODOs 14–16)
+# PART 5 — Animation                                      (complete solution)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -760,7 +760,7 @@ if __name__ == "__main__":
     plot_active_learning_2d_snapshots(history_2d, Xg, Yg)
 
     print("\n" + "=" * 60)
-    print("Part 3b – Kernel learning failure modes (2-D)")
+    print("Part 4 – Kernel learning failure modes (2-D)")
     print("=" * 60)
     print("  Running with n_initial=5, collinear (sparse — expect stripes)...")
     # Initial points all near y=0: the GP has zero information about y-variation
@@ -779,7 +779,7 @@ if __name__ == "__main__":
     plot_kernel_sensitivity_2d(history_sparse, history_dense, Xg_s, Yg_s)
 
     print("\n" + "=" * 60)
-    print("Part 4 – Animation")
+    print("Part 5 – Animation")
     print("=" * 60)
     animate_2d(history_2d, Xg, Yg, save_gif=True)
 

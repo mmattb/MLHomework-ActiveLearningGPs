@@ -16,12 +16,11 @@ Gaussian Process (GP) regression.  The roadmap:
   Part 2b– Function estimation: query until uncertainty over a chosen
            interval [x_lo, x_hi] drops below a threshold σ_thresh.
   Part 3 – Move to 2-D: learn an inverted Gaussian PDF surface with oval
-           (anisotropic) level curves.
-  Part 3b– Explore when kernel hyperparameter learning fails: run the same
-           2-D loop with an ARD Matérn whose length scales are *not* fixed,
-           compare sparse (n_initial=5) vs dense (n_initial=25) and observe
-           the stripe artefacts that appear with too few initial points.
-  Part 4 – Animate the 2-D exploration so you can watch the GP posterior
+           (anisotropic) level curves using fixed ARD kernel.
+  Part 4 – Explore when kernel hyperparameter learning fails: run the same
+           2-D loop with a freely-optimised ARD Matérn and see how sparse
+           (collinear) vs dense initial data leads to failure / success.
+  Part 5 – Animate the 2-D exploration so you can watch the GP posterior
            evolve as new points are acquired.
 
 BACKGROUND REFRESHER  (skim if rusty – Murphy Ch. 15 / Bishop §6.4)
@@ -564,8 +563,8 @@ def make_2d_grid(xlim=(-3, 3), ylim=(-3, 3), n=50):
 
 
 def active_learning_2d(
-    n_initial=5,
-    n_queries=30,
+    n_initial=15,
+    n_queries=100,
     kappa=2.0,
     noise_std=0.01,
     sigma_x=1.0,
@@ -679,7 +678,7 @@ def plot_active_learning_2d_snapshots(history, Xg, Yg, sigma_x=1.0, sigma_y=0.5)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# PART 3b — When does kernel learning fail?
+# PART 4 — When does kernel learning fail?
 # ═══════════════════════════════════════════════════════════════════════════
 #
 # In Part 3 you fixed the ARD length scales to domain knowledge (σ_x, σ_y)
@@ -835,89 +834,105 @@ def plot_kernel_sensitivity_2d(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# PART 4 — Animation
-# ═══════════════════════════════════════════════════════════════════════════
-#
-# Create an animated figure that cycles through the history snapshots.
-# Each frame shows:
-#   • Left panel:  GP posterior mean contour with training points.
-#   • Right panel: GP uncertainty contour with the next-query star.
-#
-# matplotlib.animation.FuncAnimation is the tool of choice here.
+# PART 5 — Animation
 # ═══════════════════════════════════════════════════════════════════════════
 
 
 def animate_2d(history, Xg, Yg, sigma_x=1.0, sigma_y=0.5, save_gif=True):
-    """
-    Animate the 2-D active learning run.
-
-    Parameters
-    ----------
-    history, Xg, Yg : as returned by active_learning_2d
-    save_gif : bool
-        If True, save the animation to 'active_learning_2d.gif'.
-    """
+    """Animate the 2-D active learning run."""
     Z_true = inverted_gaussian_2d(
         np.column_stack([Xg.ravel(), Yg.ravel()]), sigma_x, sigma_y
     ).reshape(Xg.shape)
 
     fig, (ax_mean, ax_unc) = plt.subplots(1, 2, figsize=(12, 5))
 
-    # We need to fix colour limits so the animation is smooth.
     all_mu = np.concatenate([h["mu_grid"].ravel() for h in history])
     all_sigma = np.concatenate([h["sigma_grid"].ravel() for h in history])
     mu_lim = (all_mu.min(), all_mu.max())
     sigma_lim = (all_sigma.min(), all_sigma.max())
 
-    # --- TODO 14 -------------------------------------------------------
-    # Implement the `init` function for FuncAnimation.
-    #   • Clear both axes.
-    #   • Return an empty list of artists.
-    #
-    # WRITE YOUR CODE BELOW (~4 lines)
     def init():
-        raise NotImplementedError("TODO 14: animation init")
+        ax_mean.clear()
+        ax_unc.clear()
+        return []
 
-    # --- TODO 15 -------------------------------------------------------
-    # Implement the `update(frame)` function for FuncAnimation.
-    #
-    #   frame : int  (index into history)
-    #
-    # For each frame:
-    #   1. Clear both axes.
-    #   2. Left axis (ax_mean):
-    #        contourf of history[frame]['mu_grid']  (use mu_lim for vmin/vmax)
-    #        contour of Z_true in white dashed lines
-    #        scatter of training points in red
-    #        title: "GP mean – step {frame}"
-    #   3. Right axis (ax_unc):
-    #        contourf of history[frame]['sigma_grid'] (use sigma_lim, cmap='magma')
-    #        scatter of training points in cyan
-    #        star marker at x_next in lime green (if present)
-    #        title: "Uncertainty σ(x) – step {frame}"
-    #   4. Set aspect='equal' on both axes.
-    #   5. Return [] (blitting not needed with clear-and-redraw).
-    #
-    # WRITE YOUR CODE BELOW (~20-25 lines)
     def update(frame):
-        raise NotImplementedError("TODO 15: animation update function")
+        h = history[frame]
 
-    # --- TODO 16 -------------------------------------------------------
-    # Create the FuncAnimation and (optionally) save it.
-    #
-    #   anim = FuncAnimation(fig, update, frames=len(history),
-    #                        init_func=init, interval=500, repeat=True)
-    #
-    #   if save_gif:
-    #       anim.save('active_learning_2d.gif', writer='pillow', fps=2)
-    #       print("Saved active_learning_2d.gif")
-    #
-    #   plt.show()
-    #
-    # WRITE YOUR CODE BELOW (~5 lines)
+        # Left panel – GP mean
+        ax_mean.clear()
+        ax_mean.contourf(
+            Xg,
+            Yg,
+            h["mu_grid"],
+            levels=30,
+            cmap="viridis",
+            vmin=mu_lim[0],
+            vmax=mu_lim[1],
+        )
+        ax_mean.contour(
+            Xg, Yg, Z_true, levels=8, colors="w", linewidths=0.5, linestyles="--"
+        )
+        ax_mean.scatter(
+            h["X_train"][:, 0],
+            h["X_train"][:, 1],
+            c="red",
+            s=18,
+            edgecolors="k",
+            lw=0.4,
+        )
+        ax_mean.set_title(f"GP mean – step {frame}")
+        ax_mean.set_aspect("equal")
 
+        # Right panel – uncertainty
+        ax_unc.clear()
+        ax_unc.contourf(
+            Xg,
+            Yg,
+            h["sigma_grid"],
+            levels=30,
+            cmap="magma",
+            vmin=sigma_lim[0],
+            vmax=sigma_lim[1],
+        )
+        ax_unc.scatter(
+            h["X_train"][:, 0],
+            h["X_train"][:, 1],
+            c="cyan",
+            s=18,
+            edgecolors="k",
+            lw=0.4,
+        )
+        if "x_next" in h:
+            ax_unc.scatter(
+                h["x_next"][0, 0],
+                h["x_next"][0, 1],
+                marker="*",
+                s=250,
+                c="lime",
+                edgecolors="k",
+                lw=1,
+            )
+        ax_unc.set_title(f"Uncertainty σ(x) – step {frame}")
+        ax_unc.set_aspect("equal")
 
-raise NotImplementedError("TODO 16: create and display animation")
+        fig.suptitle("Active Learning – 2-D Inverted Gaussian", fontsize=13)
+        return []
+
+    anim = FuncAnimation(
+        fig,
+        update,
+        frames=len(history),
+        init_func=init,
+        interval=500,
+        repeat=True,
+    )
+
+    if save_gif:
+        anim.save("active_learning_2d.gif", writer="pillow", fps=2)
+        print("Saved active_learning_2d.gif")
+
+    plt.show()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -954,7 +969,7 @@ if __name__ == "__main__":
     plot_active_learning_2d_snapshots(history_2d, Xg, Yg)
 
     print("\n" + "=" * 60)
-    print("Part 3b – Kernel learning failure modes (2-D)")
+    print("Part 4 – Kernel learning failure modes (2-D)")
     print("=" * 60)
     print("  Running with n_initial=5, collinear (sparse — expect stripes)...")
     # Initial points all near y=0: GP has no y-variation info → ℓ_y → upper bound
@@ -972,7 +987,7 @@ if __name__ == "__main__":
     plot_kernel_sensitivity_2d(history_sparse, history_dense, Xg_s, Yg_s)
 
     print("\n" + "=" * 60)
-    print("Part 4 – Animation")
+    print("Part 5 – Animation")
     print("=" * 60)
     animate_2d(history_2d, Xg, Yg, save_gif=True)
 
