@@ -13,8 +13,14 @@ Gaussian Process (GP) regression.  The roadmap:
            posterior mean ± uncertainty.
   Part 2 – Implement Upper-Confidence-Bound (UCB) acquisition and run an
            active-learning loop on the 1-D sigmoid.
+  Part 2b– Function estimation: query until uncertainty over a chosen
+           interval [x_lo, x_hi] drops below a threshold σ_thresh.
   Part 3 – Move to 2-D: learn an inverted Gaussian PDF surface with oval
            (anisotropic) level curves.
+  Part 3b– Explore when kernel hyperparameter learning fails: run the same
+           2-D loop with an ARD Matérn whose length scales are *not* fixed,
+           compare sparse (n_initial=5) vs dense (n_initial=25) and observe
+           the stripe artefacts that appear with too few initial points.
   Part 4 – Animate the 2-D exploration so you can watch the GP posterior
            evolve as new points are acquired.
 
@@ -46,9 +52,9 @@ maximises a(x) among a set of candidates.
 INSTRUCTIONS
 ------------
 1.  Search for TODO markers – each one asks you to fill in code.
-2.  There are 11 TODOs total, roughly grouped by part.
+2.  There are 14 TODOs total, roughly grouped by part.
 3.  Run the script and confirm the figures / animations look sensible.
-4.  Expected time: ~2 hours for someone comfortable with numpy, matplotlib,
+4.  Expected time: ~2-3 hours for someone comfortable with numpy, matplotlib,
     and the theory of GPs.
 
 DEPENDENCIES
@@ -244,7 +250,7 @@ def part1_fit_gp_1d():
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def ucb_acquisition(gp, X_candidates, kappa=2.0):
+def ucb_acquisition(gp, X_candidates, kappa=2.0, mu=None, sigma=None):
     """
     Compute UCB acquisition values and return the best candidate.
 
@@ -254,6 +260,10 @@ def ucb_acquisition(gp, X_candidates, kappa=2.0):
     X_candidates : ndarray, shape (n_cand, d)
     kappa : float
         Exploration weight.
+    mu : ndarray, shape (n_cand,), optional
+        Pre-computed posterior mean. If None, will be predicted.
+    sigma : ndarray, shape (n_cand,), optional
+        Pre-computed posterior std. If None, will be predicted.
 
     Returns
     -------
@@ -263,11 +273,10 @@ def ucb_acquisition(gp, X_candidates, kappa=2.0):
         UCB values for all candidates (useful for plotting).
     """
     # --- TODO 5 --------------------------------------------------------
-    # 1. Use gp.predict with return_std=True on X_candidates.
+    # 1. If mu/sigma are not provided, predict them on X_candidates.
     # 2. Compute UCB = mu + kappa * sigma.
     # 3. Find the index of the maximum UCB value.
-    # 4. Return X_candidates[best_idx] reshaped to (1, d), and the full
-    #    UCB array.
+    # 4. Return X_candidates[best_idx] reshaped to (1, d), and the full UCB array.
     #
     # WRITE YOUR CODE BELOW (~4 lines)
     raise NotImplementedError("TODO 5: implement UCB acquisition")
@@ -362,6 +371,175 @@ def plot_active_learning_1d(history, X_domain):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# PART 2b — Function Estimation over an Interval (1-D)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Goal: Estimate the sigmoid over a *specific interval* [x_lo, x_hi] to a
+#       prescribed uncertainty budget σ_thresh.  Instead of running for a
+#       fixed number of steps, keep querying until:
+#
+#           max_{x ∈ [x_lo, x_hi]} σ(x)  ≤  σ_thresh
+#
+#       The key conceptual shift compared with Part 2:
+#
+#         Part 2 objective  →  find a high-value region   (UCB: μ + κσ)
+#         Part 2b objective →  characterise the function everywhere over
+#                               a chosen interval          (pure max-σ: argmax σ)
+#
+#       When you only care about a sub-interval you still benefit from
+#       observations outside it (they constrain the kernel fit), but for
+#       simplicity here we restrict the candidate set to [x_lo, x_hi].
+#
+# Think about:
+#   • Why does pure max-σ acquisition tend to place observations roughly
+#     evenly across the interval?
+#     (Hint: for an RBF kernel, how does σ(x) look between two nearby
+#      observations?  Where is it largest?)
+#   • How does the number of queries needed scale with σ_thresh?
+#     Try σ_thresh = 0.05, 0.02, 0.01 and record the query counts.
+#   • What changes if you widen the interval from [-1.5, 1.5] to [-2, 2]?
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def max_sigma_acquisition(gp, X_candidates):
+    """
+    Pure maximum-uncertainty acquisition: pick the candidate with the
+    largest posterior standard deviation.
+
+    This is equivalent to UCB with κ → ∞, or to the greedy strategy
+    that minimises the worst-case posterior variance at each step.
+
+    Parameters
+    ----------
+    gp : fitted GaussianProcessRegressor
+    X_candidates : ndarray, shape (n_cand, 1)
+
+    Returns
+    -------
+    x_next : ndarray, shape (1, 1)
+        The candidate with highest sigma.
+    mu : ndarray, shape (n_cand,)
+        Posterior mean on all candidates.
+    sigma : ndarray, shape (n_cand,)
+        Posterior std on all candidates.
+    """
+    # --- TODO 7 --------------------------------------------------------
+    # 1. Predict both mu and sigma on X_candidates (return_std=True).
+    # 2. Find the index of the maximum sigma value.
+    # 3. Return (X_candidates[best_idx].reshape(1, 1), mu, sigma).
+    #
+    # WRITE YOUR CODE BELOW (~3 lines)
+    raise NotImplementedError("TODO 7: implement max-sigma acquisition")
+
+
+def function_estimation_1d(
+    x_lo=-1.5,
+    x_hi=1.5,
+    n_initial=3,
+    sigma_thresh=0.01,
+    max_queries=500,
+    noise_std=0.05,
+    n_candidates=200,
+):
+    """
+    Query the sigmoid inside [x_lo, x_hi] until max σ(x) ≤ sigma_thresh.
+
+    Parameters
+    ----------
+    x_lo, x_hi    : float  – target interval bounds
+    n_initial     : int    – number of random seed observations
+    sigma_thresh  : float  – stopping criterion (max posterior std)
+    max_queries   : int    – hard cap on number of queries
+    noise_std     : float  – observation noise std
+    n_candidates  : int    – resolution of the candidate / evaluation grid
+
+    Returns
+    -------
+    history : list of dict
+        keys: 'X_train', 'y_train', 'mu', 'sigma', 'x_next',
+              'max_sigma_interval'  (scalar: current max σ over interval)
+    X_interval : ndarray, shape (n_candidates, 1)
+        The dense evaluation grid restricted to [x_lo, x_hi].
+    converged : bool
+        True if max σ dropped below sigma_thresh before max_queries.
+    """
+    X_interval = np.linspace(x_lo, x_hi, n_candidates).reshape(-1, 1)
+
+    # Initial seed observations inside the interval
+    X_train = rng.uniform(x_lo, x_hi, size=(n_initial, 1))
+    y_train = sigmoid_1d(X_train).ravel() + rng.randn(n_initial) * noise_std
+
+    history = []
+    converged = False
+
+    for step in range(max_queries):
+
+        # --- TODO 8 ----------------------------------------------------
+        # 1. Build kernel + GP (same style as before), fit to X_train/y_train.
+        # 2. Call max_sigma_acquisition(gp, X_interval) → (x_next, mu, sigma).
+        # 3. Compute max_sigma = float(sigma.max()).
+        # 4. Save a history snapshot BEFORE deciding to stop:
+        #      snap = {
+        #          'X_train': X_train.copy(),
+        #          'y_train': y_train.copy(),
+        #          'mu': mu.copy(),
+        #          'sigma': sigma.copy(),
+        #          'max_sigma_interval': max_sigma,
+        #          'x_next': x_next.copy(),
+        #      }
+        #      history.append(snap)
+        # 5. Stopping check: if max_sigma <= sigma_thresh,
+        #    set converged = True and break.
+        # 6. Observe y_next = sigmoid_1d(x_next) + noise and append to X_train/y_train.
+        #
+        # Tip: use a simple RBF(length_scale=1.0) with alpha=0.01 for faster,
+        # more stable convergence (fewer hyperparameters to optimize).
+        #
+        # WRITE YOUR CODE BELOW (~15-18 lines)
+        raise NotImplementedError("TODO 8: function estimation loop body")
+
+    return history, X_interval, converged
+
+
+def plot_function_estimation_1d(history, X_interval, converged, sigma_thresh=0.01):
+    """
+    Four-panel figure:
+      Panel 1   – Convergence curve: max σ(x) over the interval vs. query index.
+      Panels 2–4 – GP posterior snapshots at three stages: early, middle, final.
+    """
+    # --- TODO 9 --------------------------------------------------------
+    #
+    # Use:  fig, axes = plt.subplots(1, 4, figsize=(20, 4))
+    #
+    # Panel 1 (axes[0]) – convergence curve
+    #   • x-axis: query index 0 … len(history)-1
+    #   • y-axis: [h['max_sigma_interval'] for h in history]
+    #   • horizontal dashed red line at y = sigma_thresh, labelled 'threshold'
+    #   • if converged, add a green vertical dashed line at the last step index
+    #   • x-axis label: "Query index"
+    #   • y-axis label: "max σ(x) over interval"
+    #   • title: "Max σ(x) over interval vs. query"
+    #
+    # Panels 2–4 (axes[1], axes[2], axes[3]) – one snapshot each for steps:
+    #     [0,  len(history) // 2,  len(history) - 1]
+    #   For each snapshot panel:
+    #   • ax.axvspan(x_lo, x_hi, alpha=0.10, color='gold') – shade target interval
+    #   • Plot true sigmoid on a dense [-2, 2] grid as a thin black line
+    #   • Plot GP mean (blue line) and ±2σ band (shaded blue) on X_interval
+    #   • Scatter training points in red
+    #   • If 'x_next' in h: axvline in orange
+    #   • title: f"Step {idx}  (max σ = {h['max_sigma_interval']:.3f})"
+    #   • Add y-axis label "f(x)" on the leftmost snapshot panel only
+    #
+    # WRITE YOUR CODE BELOW (~35-45 lines)
+    raise NotImplementedError("TODO 9: plot convergence curve + snapshots")
+
+    plt.tight_layout()
+    plt.savefig("part2b_estimation_1d.png", dpi=150)
+    plt.show()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # PART 3 — 2-D Active Learning on the Inverted Gaussian
 # ═══════════════════════════════════════════════════════════════════════════
 #
@@ -404,20 +582,20 @@ def active_learning_2d(
     """
     Xg, Yg, grid_flat = make_2d_grid(n=grid_n)
 
-    # --- TODO 7 --------------------------------------------------------
+    # --- TODO 10 -------------------------------------------------------
     # Generate n_initial random 2-D points in [-3, 3]² and observe the
     # target function (with noise).
     #
     # WRITE YOUR CODE BELOW (3-4 lines)
     # X_train = ???
     # y_train = ???
-    raise NotImplementedError("TODO 7: initial 2-D observations")
+    raise NotImplementedError("TODO 10: initial 2-D observations")
 
     history = []
 
     for step in range(n_queries):
 
-        # --- TODO 8 ----------------------------------------------------
+        # --- TODO 11 ---------------------------------------------------
         # Same structure as the 1-D loop (TODO 6), but now in 2-D:
         #   1. Choose a kernel.  Try Matern(nu=2.5) or RBF — optionally
         #      with separate length_scale per dimension:
@@ -438,7 +616,7 @@ def active_learning_2d(
         # })
         #
         # WRITE YOUR CODE BELOW (~15-20 lines)
-        raise NotImplementedError("TODO 8: active learning 2-D loop body")
+        raise NotImplementedError("TODO 11: active learning 2-D loop body")
 
     return history, Xg, Yg
 
@@ -501,6 +679,162 @@ def plot_active_learning_2d_snapshots(history, Xg, Yg, sigma_x=1.0, sigma_y=0.5)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# PART 3b — When does kernel learning fail?
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# In Part 3 you fixed the ARD length scales to domain knowledge (σ_x, σ_y)
+# because freeing them caused the optimizer to produce stripes.  This part
+# reveals *why* that happens and shows how to fix it with data instead.
+#
+# Background (Murphy §15.3.2 / Bishop §6.4.3):
+#   Maximising the log marginal likelihood ("Type II ML" / empirical Bayes)
+#   to learn kernel hyperparameters works well when the data is informative
+#   about every dimension.  With only a handful of points in [-3,3]² the
+#   likelihood surface is nearly flat along an under-sampled axis: the GP
+#   can explain the observations equally well whether that axis has a short
+#   or a very long length scale.  The optimiser drifts toward the upper
+#   bound and the posterior uncertainty becomes stripe-shaped (all variation
+#   along one axis only).
+#
+#   Two fixes:
+#     (a) Fix length scales to prior knowledge — done in Part 3.
+#     (b) Provide enough initial data that both axes are constrained.
+#   Part 3b demonstrates (b) and lets you see the transition.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def kernel_sensitivity_2d(
+    n_initial=5,
+    n_queries=15,
+    kappa=2.0,
+    noise_std=0.01,
+    sigma_x=1.0,
+    sigma_y=0.5,
+    grid_n=50,
+    X_initial=None,
+):
+    """Run active learning on the 2-D target with a freely-optimised ARD Matérn.
+
+    Unlike Part 3, the GP length scales are NOT fixed — they are learned by
+    maximising the log marginal likelihood.  Call this function twice with
+    n_initial=5 (sparse, collinear) and n_initial=25 (dense, random) to see
+    how initial data coverage affects whether the optimiser recovers the
+    correct anisotropy.
+
+    Parameters
+    ----------
+    n_initial : int
+        Number of initial observations before the active loop starts.
+    n_queries : int
+        Number of active-learning queries.
+    X_initial : ndarray of shape (n, 2), optional
+        Override the randomly generated initial design.  Supply points
+        confined to a line (all y ≈0) for the sparse failure-mode run:
+        the GP then has no information about y-variation, so the optimiser
+        pushes ℓ_y to its upper bound, producing reliable horizontal stripes.
+        If None, n_initial points are drawn uniformly from [-3, 3]².
+
+    Returns
+    -------
+    history : list of dict
+        Each entry has keys: 'X_train', 'y_train', 'mu_grid', 'sigma_grid',
+        'x_next', 'length_scales' (the optimised ARD length scales).
+    Xg, Yg : ndarray
+        Meshgrid for plotting.
+    """
+    Xg, Yg, grid_flat = make_2d_grid(n=grid_n)
+
+    if X_initial is not None:
+        X_train = np.asarray(X_initial, dtype=float)
+        n_initial = len(X_train)
+    else:
+        X_train = rng.uniform(-3, 3, size=(n_initial, 2))
+    y_train = (
+        inverted_gaussian_2d(X_train, sigma_x, sigma_y)
+        + rng.randn(n_initial) * noise_std
+    )
+
+    history = []
+
+    for step in range(n_queries):
+        # --- TODO 12 ---------------------------------------------------
+        # Same structure as TODO 11, but use a *freely-optimised* ARD
+        # Matérn kernel.  Do NOT pass optimizer=None — the whole point is
+        # to let the marginal likelihood choose the length scales.
+        #
+        #   kernel = C(1.0, (1e-2, 1e2)) * Matern(
+        #       length_scale=[1.0, 1.0],
+        #       length_scale_bounds=(0.1, 20.0),
+        #       nu=2.5,
+        #   )
+        #   gp = GaussianProcessRegressor(
+        #       kernel=kernel, alpha=noise_std**2,
+        #       n_restarts_optimizer=3, random_state=RNG_SEED,
+        #   )
+        #
+        # After fitting, extract the optimised per-axis length scales:
+        #   ls = gp.kernel_.k2.length_scale   # shape (2,)
+        # and include 'length_scales': ls.copy() in the history snapshot
+        # so the plot function can annotate each panel.
+        #
+        # You will likely see ConvergenceWarnings when n_initial is small —
+        # that is expected and is precisely the failure mode being studied.
+        #
+        # WRITE YOUR CODE BELOW (~20-25 lines)
+        raise NotImplementedError("TODO 12: kernel_sensitivity_2d loop body")
+
+    return history, Xg, Yg
+
+
+def plot_kernel_sensitivity_2d(
+    history_sparse,
+    history_dense,
+    Xg,
+    Yg,
+    n_initial_sparse=5,
+    n_initial_dense=25,
+):
+    """Compare uncertainty maps from sparse vs dense initial observations.
+
+    Produces a 2 × 4 figure:
+      • Top row:    history_sparse  (small n_initial — stripes expected)
+      • Bottom row: history_dense   (large n_initial — ovals expected)
+      • 4 columns:  steps 0, 5, 10, final
+
+    Each panel shows the uncertainty map σ(x) and its title includes the
+    optimised length scales ℓ_x and ℓ_y so you can watch how they evolve.
+
+    Parameters
+    ----------
+    history_sparse, history_dense : list of dict
+        As returned by kernel_sensitivity_2d.
+    Xg, Yg : ndarray
+        Meshgrid for plotting.
+    n_initial_sparse, n_initial_dense : int
+        Used for axis labels.
+    """
+    # --- TODO 13 -------------------------------------------------------
+    # Create a 2 × 4 figure with snapshot columns at steps 0, 5, 10 and
+    # the final step.  For each panel:
+    #
+    #   hidx = min(idx, len(history) - 1)   # guard against shorter runs
+    #   ax.contourf(Xg, Yg, h['sigma_grid'], levels=20, cmap='magma')
+    #   ax.scatter(h['X_train'][:, 0], h['X_train'][:, 1],
+    #              c='cyan', s=15, edgecolors='k', lw=0.4)
+    #   ls = h['length_scales']
+    #   ax.set_title(f"step {hidx}\nℓ_x={ls[0]:.2f}, ℓ_y={ls[1]:.2f}",
+    #               fontsize=8)
+    #   ax.set_aspect('equal')
+    #
+    # Label the left y-axis of each row with n_initial and 'σ(x)'.
+    # Add a suptitle summarising the lesson.
+    # Save to 'part3b_kernel_sensitivity.png'.
+    #
+    # WRITE YOUR CODE BELOW (~25-30 lines)
+    raise NotImplementedError("TODO 13: plot_kernel_sensitivity_2d")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # PART 4 — Animation
 # ═══════════════════════════════════════════════════════════════════════════
 #
@@ -535,16 +869,16 @@ def animate_2d(history, Xg, Yg, sigma_x=1.0, sigma_y=0.5, save_gif=True):
     mu_lim = (all_mu.min(), all_mu.max())
     sigma_lim = (all_sigma.min(), all_sigma.max())
 
-    # --- TODO 9 --------------------------------------------------------
+    # --- TODO 14 -------------------------------------------------------
     # Implement the `init` function for FuncAnimation.
     #   • Clear both axes.
     #   • Return an empty list of artists.
     #
     # WRITE YOUR CODE BELOW (~4 lines)
     def init():
-        raise NotImplementedError("TODO 9: animation init")
+        raise NotImplementedError("TODO 14: animation init")
 
-    # --- TODO 10 -------------------------------------------------------
+    # --- TODO 15 -------------------------------------------------------
     # Implement the `update(frame)` function for FuncAnimation.
     #
     #   frame : int  (index into history)
@@ -566,9 +900,9 @@ def animate_2d(history, Xg, Yg, sigma_x=1.0, sigma_y=0.5, save_gif=True):
     #
     # WRITE YOUR CODE BELOW (~20-25 lines)
     def update(frame):
-        raise NotImplementedError("TODO 10: animation update function")
+        raise NotImplementedError("TODO 15: animation update function")
 
-    # --- TODO 11 -------------------------------------------------------
+    # --- TODO 16 -------------------------------------------------------
     # Create the FuncAnimation and (optionally) save it.
     #
     #   anim = FuncAnimation(fig, update, frames=len(history),
@@ -581,7 +915,7 @@ def animate_2d(history, Xg, Yg, sigma_x=1.0, sigma_y=0.5, save_gif=True):
     #   plt.show()
     #
     # WRITE YOUR CODE BELOW (~5 lines)
-    raise NotImplementedError("TODO 11: create and display animation")
+raise NotImplementedError("TODO 16: create and display animation")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -606,10 +940,32 @@ if __name__ == "__main__":
     plot_active_learning_1d(history_1d, X_domain_1d)
 
     print("\n" + "=" * 60)
+    print("Part 2b – Function estimation over an interval (1-D)")
+    print("=" * 60)
+    history_est, X_interval, converged = function_estimation_1d()
+    plot_function_estimation_1d(history_est, X_interval, converged)
+
+    print("\n" + "=" * 60)
     print("Part 3 – Active learning on 2-D inverted Gaussian")
     print("=" * 60)
     history_2d, Xg, Yg = active_learning_2d()
     plot_active_learning_2d_snapshots(history_2d, Xg, Yg)
+
+    print("\n" + "=" * 60)
+    print("Part 3b – Kernel learning failure modes (2-D)")
+    print("=" * 60)
+    print("  Running with n_initial=5, collinear (sparse — expect stripes)...")
+    # Initial points all near y=0: GP has no y-variation info → ℓ_y → upper bound
+    X_init_sparse = np.column_stack([
+        rng.uniform(-3, 3, 5),
+        rng.uniform(-0.3, 0.3, 5),
+    ])
+    history_sparse, Xg_s, Yg_s = kernel_sensitivity_2d(
+        n_initial=5, X_initial=X_init_sparse
+    )
+    print("  Running with n_initial=25 (dense — expect ovals)...")
+    history_dense, _, _ = kernel_sensitivity_2d(n_initial=25)
+    plot_kernel_sensitivity_2d(history_sparse, history_dense, Xg_s, Yg_s)
 
     print("\n" + "=" * 60)
     print("Part 4 – Animation")
