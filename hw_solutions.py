@@ -381,7 +381,7 @@ def active_learning_2d(
         )
         gp = GaussianProcessRegressor(
             kernel=kernel,
-            alpha=noise_std ** 2,
+            alpha=noise_std**2,
             optimizer=None,
             random_state=RNG_SEED,
         )
@@ -536,7 +536,7 @@ def kernel_sensitivity_2d(
         )
         gp = GaussianProcessRegressor(
             kernel=kernel,
-            alpha=noise_std ** 2,
+            alpha=noise_std**2,
             n_restarts_optimizer=3,
             random_state=RNG_SEED,
         )
@@ -765,10 +765,12 @@ if __name__ == "__main__":
     print("  Running with n_initial=5, collinear (sparse — expect stripes)...")
     # Initial points all near y=0: the GP has zero information about y-variation
     # so the optimiser pushes ℓ_y to its upper bound → horizontal stripes.
-    X_init_sparse = np.column_stack([
-        rng.uniform(-3, 3, 5),
-        rng.uniform(-0.3, 0.3, 5),
-    ])
+    X_init_sparse = np.column_stack(
+        [
+            rng.uniform(-3, 3, 5),
+            rng.uniform(-0.3, 0.3, 5),
+        ]
+    )
     history_sparse, Xg_s, Yg_s = kernel_sensitivity_2d(
         n_initial=5, X_initial=X_init_sparse
     )

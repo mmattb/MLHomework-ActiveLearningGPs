@@ -915,6 +915,8 @@ def animate_2d(history, Xg, Yg, sigma_x=1.0, sigma_y=0.5, save_gif=True):
     #   plt.show()
     #
     # WRITE YOUR CODE BELOW (~5 lines)
+
+
 raise NotImplementedError("TODO 16: create and display animation")
 
 
@@ -956,10 +958,12 @@ if __name__ == "__main__":
     print("=" * 60)
     print("  Running with n_initial=5, collinear (sparse — expect stripes)...")
     # Initial points all near y=0: GP has no y-variation info → ℓ_y → upper bound
-    X_init_sparse = np.column_stack([
-        rng.uniform(-3, 3, 5),
-        rng.uniform(-0.3, 0.3, 5),
-    ])
+    X_init_sparse = np.column_stack(
+        [
+            rng.uniform(-3, 3, 5),
+            rng.uniform(-0.3, 0.3, 5),
+        ]
+    )
     history_sparse, Xg_s, Yg_s = kernel_sensitivity_2d(
         n_initial=5, X_initial=X_init_sparse
     )
